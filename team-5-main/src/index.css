@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+/* 전역 기본 설정만 최소로 */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  background-color: #f8fafc; /* 대충 slate-50 느낌 */
+  color: #0f172a;            /* slate-900 느낌 */
+}
+
+/* 혹시 모를 레이아웃 깨짐 방지용 */
+#root {
+  min-height: 100vh;
+}
