@@ -1,7 +1,3 @@
-#
-# JWT 토큰 방식의 관리자 인증 설정 파일
-#
-
 import os
 from datetime import timedelta
 
@@ -12,12 +8,12 @@ USE_SQLITE = os.getenv("USE_SQLITE", "true").lower() == "true"
 
 if USE_SQLITE:
     # SQLite - 파일 기반 데이터베이스 (admin.db 파일에 저장)
-    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./admin.db")
+    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./app.db")
 else:
     # MariaDB - 학과 서버 연결 시 사용
     DATABASE_URL = os.getenv(
         "DATABASE_URL",
-        "mysql+pymysql://admin:admin123@localhost:3306/admin_db"
+        "mysql+pymysql://admin:admin123@localhost:3306/app_db"
     )
 
 # JWT 설정
