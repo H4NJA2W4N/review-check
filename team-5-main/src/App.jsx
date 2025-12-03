@@ -47,9 +47,6 @@ export default function App() {
   // --- 모달 ---
   const [showInfoModal, setShowInfoModal] = useState(false);
 
-  // --- 대시보드 관련 ---
-  const [dateRange, setDateRange] = useState({ start: "", end: "" });
-
   // --- 페이지 로드 시 토큰 확인 ---
   useEffect(() => {
     const token = localStorage.getItem("admin_token");
@@ -289,7 +286,7 @@ export default function App() {
     const [urlInput, setUrlInput] = React.useState("");
 
     // ⭐ handleAnalyze도 HomeScreen 내부로
-    const handleAnalyze = () => {
+    const handleAnalyze = async () => {
       if (!urlInput.trim()) {
         showToast("URL을 입력해주세요.", "error");
         return;
@@ -298,24 +295,99 @@ export default function App() {
       setIsAnalyzing(true);
       showToast("분석을 시작합니다...", "info");
 
-      setTimeout(() => {
-        const mockScore = Math.floor(Math.random() * 100);
-        setAnalysisResult({
-          url: urlInput, // ⭐ URL 저장
-          score: mockScore,
-          productName: "베이직 오버핏 코튼 셔츠",
-          summary:
-            "대부분의 리뷰가 긍정적이나, 배송 관련 불만이 일부 감지되었습니다. 패턴 분석 결과 조작된 리뷰 비율은 낮습니다.",
-          details: [
-            { label: "실구매자 비율", value: "92%" },
-            { label: "리뷰 긍정률", value: "85%" },
-            { label: "언어 패턴 일치도", value: "High" },
-          ],
+      try {
+        // 1. 분석 요청 생성
+        const response = await fetch(`${API_BASE_URL}/users/analyses`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ review_url: urlInput.trim() }),
         });
+
+        const data = await response.json();
+
+        if (!data.success) {
+          setIsAnalyzing(false);
+          showToast(data.message || "분석 요청에 실패했습니다.", "error");
+          return;
+        }
+
+        const analysisId = data.analysis_id;
+        showToast("분석 중입니다. 잠시만 기다려주세요...", "info");
+
+        // 2. 분석 결과 폴링 (2초마다 확인, 최대 60초)
+        let attempts = 0;
+        const maxAttempts = 30;
+
+        const pollResult = async () => {
+          if (attempts >= maxAttempts) {
+            setIsAnalyzing(false);
+            showToast(
+              "분석 시간이 초과되었습니다. 나중에 다시 시도해주세요.",
+              "error"
+            );
+            return;
+          }
+
+          attempts++;
+
+          try {
+            const resultResponse = await fetch(
+              `${API_BASE_URL}/users/analyses/${analysisId}`
+            );
+            const resultData = await resultResponse.json();
+
+            if (resultData.status === "completed") {
+              // 분석 완료!
+              const score = Math.round(data.confidence ?? 0);
+
+              setAnalysisResult({
+                score: score,
+                url: urlInput.trim(),
+                verdict: resultData.verdict,
+                confidence: resultData.confidence,
+                reviewCount: resultData.review_count,
+                summary: 1,
+                details: [
+                  {
+                    label: "분석된 리뷰 수",
+                    value: `${resultData.review_count || 0}개`,
+                  },
+                  { label: "신뢰도", value: `${resultData.confidence || 0}%` },
+                  {
+                    label: "판정 결과",
+                    value: resultData.verdict,
+                  },
+                ],
+              });
+
+              setIsAnalyzing(false);
+              showToast("분석이 완료되었습니다!", "success");
+              navigateTo("result");
+            } else if (resultData.status === "failed") {
+              // 분석 실패
+              setIsAnalyzing(false);
+              showToast(
+                resultData.error_message || "분석에 실패했습니다.",
+                "error"
+              );
+            } else {
+              // 아직 처리 중 (queued, processing)
+              setTimeout(pollResult, 2000);
+            }
+          } catch (error) {
+            console.error("결과 조회 오류:", error);
+            setIsAnalyzing(false);
+            showToast("결과 조회 중 오류가 발생했습니다.", "error");
+          }
+        };
+
+        // 첫 번째 폴링 시작
+        setTimeout(pollResult, 2000);
+      } catch (error) {
+        console.error("분석 요청 오류:", error);
         setIsAnalyzing(false);
-        showToast("분석이 완료되었습니다!", "success");
-        navigateTo("result");
-      }, 1500);
+        showToast("서버 연결에 실패했습니다.", "error");
+      }
     };
 
     return (
@@ -1243,6 +1315,13 @@ export default function App() {
     const [replyContent, setReplyContent] = React.useState("");
     const [isReplySaving, setIsReplySaving] = React.useState(false);
 
+    // 데이터 관리 상태
+    const [stats, setStats] = React.useState({
+      total_count: 0,
+      today_count: 0,
+    });
+    const [dateRange, setDateRange] = useState({ start: "", end: "" });
+
     const tabs = [
       { id: "notice", label: "공지사항 관리", icon: <FileText size={18} /> },
       {
@@ -1253,6 +1332,69 @@ export default function App() {
       { id: "data", label: "데이터 관리", icon: <Database size={18} /> },
       { id: "aimodel", label: "AI 모델 재학습", icon: <Cpu size={18} /> },
     ];
+
+    // 통계 조회
+    const fetchStats = async () => {
+      try {
+        const token = localStorage.getItem("admin_token");
+        const response = await fetch(`${API_BASE_URL}/admin/stats`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await response.json();
+        if (data.success) {
+          setStats({
+            total_count: data.total_count,
+            today_count: data.today_count,
+          });
+        }
+      } catch (error) {
+        console.error("통계 조회 오류:", error);
+        showToast("통계를 불러오는데 실패했습니다.", "error");
+      }
+    };
+
+    // CSV 다운로드
+    const handleDownload = async () => {
+      if (!dateRange.start || !dateRange.end) {
+        showToast("시작일과 종료일을 모두 설정해주세요.", "error");
+        return;
+      }
+
+      try {
+        const token = localStorage.getItem("admin_token");
+        const response = await fetch(
+          `${API_BASE_URL}/admin/download-csv?start_date=${dateRange.start}&end_date=${dateRange.end}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error("다운로드 실패");
+        }
+
+        // Blob으로 변환
+        const blob = await response.blob();
+
+        // 다운로드 링크 생성
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.setAttribute(
+          "download",
+          `analysis_data_${dateRange.start}_${dateRange.end}.csv`
+        );
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+
+        showToast("CSV 파일이 다운로드되었습니다.", "success");
+      } catch (error) {
+        console.error("CSV 다운로드 오류:", error);
+        showToast("다운로드에 실패했습니다.", "error");
+      }
+    };
 
     // 공지사항 관련 함수들
     const fetchNotices = async () => {
@@ -1500,6 +1642,8 @@ export default function App() {
           setReplyContent("");
         }
         fetchInquiries();
+      } else if (activeTab === "data") {
+        fetchStats();
       }
 
       // 현재 탭을 이전 탭으로 저장
@@ -1871,7 +2015,7 @@ export default function App() {
                     총 누적 분석
                   </div>
                   <div className="text-3xl font-extrabold text-blue-800">
-                    12,450 건
+                    {stats.total_count.toLocaleString()} 건
                   </div>
                 </div>
                 <div className="bg-indigo-50 p-6 rounded-xl border border-indigo-100">
@@ -1879,7 +2023,7 @@ export default function App() {
                     오늘 분석 요청
                   </div>
                   <div className="text-3xl font-extrabold text-indigo-800">
-                    142 건
+                    {stats.today_count.toLocaleString()} 건
                   </div>
                 </div>
               </div>

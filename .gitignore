@@ -119,3 +119,7 @@ coverage/
 *.cache/
 .cache/
 .eslintcache
+
+ai_models/
+new-front/
+team-5/

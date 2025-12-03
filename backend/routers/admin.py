@@ -1,9 +1,14 @@
 """
 관리자 인증 및 관리 API 라우터
 """
+import csv
+from datetime import datetime, timedelta
+import io
 from fastapi import APIRouter, Depends, HTTPException, status, Header
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from models.analysis import Analysis
 from models.database import get_db
 from models.admin import Admin
 from models.schemas import (
@@ -140,6 +145,97 @@ def admin_dashboard(current_admin: Admin = Depends(get_current_admin)):
         "last_login_at": current_admin.last_login_at.isoformat() if current_admin.last_login_at else None
     }
 
+# ===== 데이터 관리 API =====
+
+@router.get("/stats")
+def get_analysis_stats(
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(get_current_admin)
+):
+    """
+    [관리자 기능] 분석 통계 조회
+    
+    Returns:
+    - total_count: 총 누적 분석 수
+    - today_count: 오늘 분석 요청 수
+    """
+    
+    try:
+        # 총 누적 분석 수
+        total_count = db.query(Analysis).count()
+        
+        # 오늘 분석 요청 수
+        today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_count = db.query(Analysis).filter(
+            Analysis.created_at >= today_start
+        ).count()
+        
+        return {
+            "success": True,
+            "total_count": total_count,
+            "today_count": today_count
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"통계 조회 오류: {str(e)}")
+
+@router.get("/download-csv")
+def download_analysis_csv(
+    start_date: str, 
+    end_date: str, 
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(get_current_admin)
+):
+    """
+    [관리자 기능] 기간별 분석 데이터 CSV 다운로드
+    """
+    try:
+        # 1. 날짜 변환
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+
+        # 2. DB 조회
+        results = db.query(Analysis).filter(
+            Analysis.created_at >= start_dt,
+            Analysis.created_at < end_dt
+        ).all()
+
+        # 3. CSV 생성 (메모리)
+        stream = io.StringIO()
+        
+        # 엑셀 한글 깨짐 방지 (BOM 문자 추가)
+        stream.write('\ufeff')
+
+        csv_writer = csv.writer(stream)
+
+        # 4. 헤더 작성
+        csv_writer.writerow(["ID", "URL", "신뢰도 점수", "분석일시"])
+
+        # 5. 데이터 작성
+        for item in results:
+            analysis_id_val = getattr(item, 'analysis_id', getattr(item, 'id', 'Unknown'))
+            
+            # 날짜를 보기 좋게 문자열로 변환 (YYYY-MM-DD HH:MM:SS)
+            formatted_date = item.created_at.strftime("%Y-%m-%d %H:%M:%S") if item.created_at else ""
+
+            csv_writer.writerow([
+                analysis_id_val,
+                item.review_url,
+                item.confidence,
+                formatted_date
+            ])
+
+        stream.seek(0)
+        filename = f"analysis_data_{start_date}_{end_date}.csv"
+        
+        # 파일 응답 반환 (media_type을 ms-excel로 지정하면 엑셀이 더 잘 알아듣습니다)
+        response = StreamingResponse(iter([stream.getvalue()]), media_type="text/csv")
+        response.headers["Content-Disposition"] = f"attachment; filename={filename}"
+        
+        return response
+
+    except Exception as e:
+        print(f"❌ CSV 다운로드 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"CSV 생성 중 오류: {str(e)}")
 
 @router.post("/create")
 def create_admin_account(

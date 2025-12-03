@@ -2,6 +2,17 @@
 Review Check - 모놀리식 애플리케이션
 쇼핑몰 리뷰 신뢰도 분석 시스템
 """
+
+import logging
+import sys
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
+    force=True
+)
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -17,7 +28,8 @@ from config import ALLOWED_ORIGINS
 from routers import admin
 from routers import notice
 from routers import inquiry
-# from routers import review  # 추가 예정
+from routers import crawling
+from routers import analysis
 
 # 데이터베이스 테이블 생성
 Base.metadata.create_all(bind=engine)
@@ -47,8 +59,8 @@ app.add_middleware(
 app.include_router(admin.router, prefix="/admin", tags=["관리자"])
 app.include_router(notice.router, tags=["공지사항"])
 app.include_router(inquiry.router, tags=["문의"])
-# app.include_router(review.router, prefix="/review", tags=["리뷰 분석"])
-
+app.include_router(crawling.router, tags=["리뷰 크롤링"])
+app.include_router(analysis.router, tags=["분석"])
 
 @app.on_event("startup")
 async def startup_event():
@@ -93,13 +105,3 @@ def health_check():
         "service": "review-check-api",
         "timestamp": datetime.utcnow().isoformat()
     }
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True  # 개발 중에는 True, 프로덕션에서는 False
-    )
