@@ -120,6 +120,7 @@ coverage/
 .cache/
 .eslintcache
 
-ai_models/
-new-front/
-team-5/
+*.safetensors
+*.pt
+*.pth
+*/checkpoint-*/
