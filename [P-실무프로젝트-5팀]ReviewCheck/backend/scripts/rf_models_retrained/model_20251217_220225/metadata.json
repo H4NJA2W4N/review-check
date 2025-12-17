@@ -1,0 +1,21 @@
+{
+  "total_samples": 235,
+  "original_samples": 0,
+  "feedback_samples": 235,
+  "train_samples": 188,
+  "val_samples": 47,
+  "train_accuracy": 0.9521276595744681,
+  "val_accuracy": 0.7872340425531915,
+  "cv_accuracy": 0.7106382978723405,
+  "cv_std": 0.08782879761936295,
+  "n_features": 771,
+  "n_estimators": 150,
+  "max_depth": 12,
+  "label_distribution": {
+    "positive": 151,
+    "negative": 84
+  },
+  "created_at": "2025-12-17T22:03:00.907352",
+  "kcelectra_model": "beomi/KcELECTRA-base",
+  "training_mode": "original_plus_feedback"
+}
