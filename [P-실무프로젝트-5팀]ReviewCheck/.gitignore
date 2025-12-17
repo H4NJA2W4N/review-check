@@ -121,5 +121,4 @@ coverage/
 .eslintcache
 
 # Ignore model files
-ai_models/*.pkl
 ai_models/*.safetensors
